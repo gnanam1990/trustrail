@@ -1,30 +1,66 @@
-# TrustRail
+## Foundry
 
-**The neutral aid-disbursement rail. Built on Arc.**
+**Foundry is a blazing fast, portable and modular toolkit for Ethereum application development written in Rust.**
 
-Donors fund a campaign split into tranches; NGOs receive each tranche only after M-of-N attestors confirm proof-of-distribution for the prior one. Unused tranches can be reclaimed by donors after a grace period.
+Foundry consists of:
 
-Status: early build · Arc testnet · **unaudited — do not use with real funds.**
+- **Forge**: Ethereum testing framework (like Truffle, Hardhat and DappTools).
+- **Cast**: Swiss army knife for interacting with EVM smart contracts, sending transactions and getting chain data.
+- **Anvil**: Local Ethereum node, akin to Ganache, Hardhat Network.
+- **Chisel**: Fast, utilitarian, and verbose solidity REPL.
 
-Docs: [`docs/PRD.md`](docs/PRD.md) · Build prompts: [`PROMPT.md`](PROMPT.md) · Testnet addresses: [`docs/addresses.md`](docs/addresses.md)
+## Documentation
 
-## Quickstart (dev)
+https://book.getfoundry.sh/
 
-```bash
-forge test
-npm install && npm test
+## Usage
+
+### Build
+
+```shell
+$ forge build
 ```
 
-## Layout
+### Test
 
-- `src/` — onchain contracts (TrancheVault).
-- `test/` — Foundry unit + fuzz tests (invariants).
-- `services/` — off-chain proof + attestor tools.
-- `script/` — deployment + demo scenarios.
-- `docs/addresses.md` — testnet addresses + lifecycle proof.
+```shell
+$ forge test
+```
 
-## Honesty rules
+### Format
 
-- Unaudited testnet software — do not use with real funds.
-- Attestors verify *content* (photo, GPS, recipient count) off-chain; the contract enforces *process* (M-of-N confirmation, tranche ordering).
-- No image/photo authenticity verification onchain.
+```shell
+$ forge fmt
+```
+
+### Gas Snapshots
+
+```shell
+$ forge snapshot
+```
+
+### Anvil
+
+```shell
+$ anvil
+```
+
+### Deploy
+
+```shell
+$ forge script script/Counter.s.sol:CounterScript --rpc-url <your_rpc_url> --private-key <your_private_key>
+```
+
+### Cast
+
+```shell
+$ cast <subcommand>
+```
+
+### Help
+
+```shell
+$ forge --help
+$ anvil --help
+$ cast --help
+```
