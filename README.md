@@ -1,66 +1,50 @@
-## Foundry
+# TrustRail
 
-**Foundry is a blazing fast, portable and modular toolkit for Ethereum application development written in Rust.**
+**The neutral aid-disbursement rail. Built on Arc.**
 
-Foundry consists of:
+Donors fund a campaign split into tranches; NGOs receive each tranche only after M-of-N attestors confirm proof-of-distribution for the prior one. Unused tranches can be reclaimed by donors after a grace period.
 
-- **Forge**: Ethereum testing framework (like Truffle, Hardhat and DappTools).
-- **Cast**: Swiss army knife for interacting with EVM smart contracts, sending transactions and getting chain data.
-- **Anvil**: Local Ethereum node, akin to Ganache, Hardhat Network.
-- **Chisel**: Fast, utilitarian, and verbose solidity REPL.
+Status: early build · Arc testnet · **unaudited — do not use with real funds.**
 
-## Documentation
+Docs: [`docs/PRD.md`](docs/PRD.md) · Build prompts: [`PROMPT.md`](PROMPT.md) · Testnet addresses: [`docs/addresses.md`](docs/addresses.md) · Off-chain services: [`services/README.md`](services/README.md)
 
-https://book.getfoundry.sh/
+## Network (Arc Testnet)
 
-## Usage
+- Chain ID: `5042002`
+- RPC: `https://rpc.testnet.arc.network`
+- Explorer: `https://testnet.arcscan.app`
 
-### Build
+## Quickstart (dev)
 
-```shell
-$ forge build
+```bash
+forge install
+forge build
+forge test
+npm install && npm test
 ```
 
-### Test
+## Deploy + demo (Arc testnet)
 
-```shell
-$ forge test
+```bash
+cp .env.example .env
+# fill in PRIVATE_KEY, USDC_ADDRESS, DONOR_KEY, NGO_KEY, ATTESTOR*_KEY, VAULT_ADDRESS
+source .env
+forge script script/Deploy.s.sol:Deploy --rpc-url $ARC_TESTNET_RPC --broadcast
+VAULT_ADDRESS=0x... npm run demo
 ```
 
-### Format
+See [`docs/addresses.md`](docs/addresses.md) for funded-key setup, faucet, and lifecycle proof.
 
-```shell
-$ forge fmt
-```
+## Layout
 
-### Gas Snapshots
+- `src/` — onchain contracts (TrancheVault).
+- `test/` — Foundry unit + fuzz tests (invariants).
+- `services/` — off-chain proof + attestor tools.
+- `script/` — deployment + demo scenarios.
+- `docs/addresses.md` — testnet addresses + lifecycle proof.
 
-```shell
-$ forge snapshot
-```
+## Honesty rules
 
-### Anvil
-
-```shell
-$ anvil
-```
-
-### Deploy
-
-```shell
-$ forge script script/Counter.s.sol:CounterScript --rpc-url <your_rpc_url> --private-key <your_private_key>
-```
-
-### Cast
-
-```shell
-$ cast <subcommand>
-```
-
-### Help
-
-```shell
-$ forge --help
-$ anvil --help
-$ cast --help
-```
+- Unaudited testnet software — do not use with real funds.
+- Attestors verify *content* (photo, GPS, recipient count) off-chain; the contract enforces *process* (M-of-N confirmation, tranche ordering).
+- No image/photo authenticity verification onchain.
