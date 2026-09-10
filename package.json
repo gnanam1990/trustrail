@@ -5,9 +5,9 @@
   "main": "dist/index.js",
   "scripts": {
     "test": "node --test --import tsx services/test/*.test.ts",
-    "submit-proof": "tsx services/proof.ts submitProof",
-    "confirm": "tsx services/proof.ts confirm",
-    "demo": "tsx services/proof.ts"
+    "submit-proof": "tsx services/submit-proof.ts",
+    "confirm": "tsx services/confirm.ts",
+    "demo": "tsx services/demo.ts"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",

@@ -49,10 +49,67 @@ export const VAULT_ABI = [
   "function confirmProof(uint256,uint256)",
   "function claimTranche(uint256,uint256)",
   "function reclaimExpired(uint256,uint256)",
-  "function getTranche(uint256,uint256) view returns (tuple(uint96 amount,uint64 gracePeriod,uint64 unlockAt,uint64 proofSubmittedAt,uint8 state,bytes32 proofHash,uint256 confirmationCount))",
-  "function getCampaign(uint256) view returns (tuple(address donor,address ngo,uint256 trancheCount,uint256 threshold,tuple(uint96,uint64,uint64,uint64,uint8,bytes32,uint256)[] tranches))",
+  "function getTranche(uint256,uint256) view returns (tuple(uint96 amount,uint64 gracePeriod,uint64 unlockAt,uint64 proofSubmittedAt,uint8 state,bytes32 proofHash,uint256 recipientCount,uint256 confirmationCount))",
+  "function getCampaign(uint256) view returns (tuple(address donor,address ngo,uint256 trancheCount,uint256 threshold,tuple(uint96,uint64,uint64,uint64,uint8,bytes32,uint256,uint256)[] tranches))",
   "function isAttestor(uint256,address) view returns (bool)",
 ] as const;
+
+// ------------------------------------------------------------------
+// Notification stub (v1: console log; wire to email/webhook in prod)
+// Called whenever a new proof needs attestor review.
+// ------------------------------------------------------------------
+
+export function notifyProofSubmitted(
+  campaignId: number | bigint,
+  trancheIndex: number,
+  proofHash: string,
+  recipientCount: number
+): void {
+  console.log(
+    `[notify] ProofSubmitted campaign=${campaignId.toString()} tranche=${trancheIndex} ` +
+      `hash=${proofHash} recipients=${recipientCount} — attestors notified for review`
+  );
+}
+
+// Testable core: submit/confirm against an injected Contract-like object
+// (real ethers Contract in prod, mocked object in tests).
+
+export interface SubmitProofContract {
+  submitProof(
+    campaignId: number | bigint,
+    trancheIndex: number,
+    proofHash: string,
+    recipientCount: number
+  ): Promise<{ wait(): Promise<{ hash: string; blockNumber: number }> }>;
+}
+
+export interface ConfirmProofContract {
+  confirmProof(
+    campaignId: number | bigint,
+    trancheIndex: number
+  ): Promise<{ wait(): Promise<{ hash: string; blockNumber: number }> }>;
+}
+
+export async function submitProofWithContract(
+  c: SubmitProofContract,
+  input: ProofInput
+) {
+  const proofHash = buildProofHash(input);
+  const tx = await c.submitProof(input.campaignId, input.trancheIndex, proofHash, input.recipientCount);
+  const r = await tx.wait();
+  notifyProofSubmitted(input.campaignId, input.trancheIndex, proofHash, input.recipientCount);
+  return { proofHash, txHash: r.hash, blockNumber: r.blockNumber };
+}
+
+export async function confirmProofWithContract(
+  c: ConfirmProofContract,
+  campaignId: number | bigint,
+  trancheIndex: number
+) {
+  const tx = await c.confirmProof(campaignId, trancheIndex);
+  const r = await tx.wait();
+  return { txHash: r.hash, blockNumber: r.blockNumber };
+}
 
 export async function submitProof(
   vault: string,
@@ -63,10 +120,7 @@ export async function submitProof(
   const provider = new JsonRpcProvider(rpc);
   const signer = new Wallet(signerPk, provider);
   const c = new Contract(vault, VAULT_ABI, signer);
-  const proofHash = buildProofHash(input);
-  const tx = await c.submitProof(input.campaignId, input.trancheIndex, proofHash, input.recipientCount);
-  const r = await tx.wait();
-  return { proofHash, txHash: r.hash, blockNumber: r.blockNumber };
+  return submitProofWithContract(c as unknown as SubmitProofContract, input);
 }
 
 export async function confirmProof(
@@ -79,9 +133,7 @@ export async function confirmProof(
   const provider = new JsonRpcProvider(rpc);
   const signer = new Wallet(signerPk, provider);
   const c = new Contract(vault, VAULT_ABI, signer);
-  const tx = await c.confirmProof(campaignId, trancheIndex);
-  const r = await tx.wait();
-  return { txHash: r.hash, blockNumber: r.blockNumber };
+  return confirmProofWithContract(c as unknown as ConfirmProofContract, campaignId, trancheIndex);
 }
 
 export async function claimTranche(
@@ -120,23 +172,31 @@ export async function reclaimExpired(
 
 import { formatUnits, parseUnits } from "ethers";
 
-const ARC_RPC = process.env.ARC_TESTNET_RPC ?? "https://rpc.testnet.arc.network";
-const EXPLORER = process.env.EXPLORER_BASE ?? "https://testnet.arcscan.app";
-const VAULT = process.env.VAULT_ADDRESS ?? "";
-const USDC = process.env.USDC_ADDRESS ?? "0x3600000000000000000000000000000000000000";
-const DONOR_PK = process.env.DONOR_KEY ?? "";
-const NGO_PK = process.env.NGO_KEY ?? "";
-const A1_PK = process.env.ATTESTOR1_KEY ?? "";
-const A2_PK = process.env.ATTESTOR2_KEY ?? "";
-const A3_PK = process.env.ATTESTOR3_KEY ?? "";
+export const ARC_RPC = process.env.ARC_TESTNET_RPC ?? "https://rpc.testnet.arc.network";
+export const EXPLORER = process.env.EXPLORER_BASE ?? "https://testnet.arcscan.app";
+export const VAULT = process.env.VAULT_ADDRESS ?? "";
+export const USDC = process.env.USDC_ADDRESS ?? "0x3600000000000000000000000000000000000000";
+export const DONOR_PK = process.env.DONOR_KEY ?? "";
+export const NGO_PK = process.env.NGO_KEY ?? "";
+export const A1_PK = process.env.ATTESTOR1_KEY ?? "";
+export const A2_PK = process.env.ATTESTOR2_KEY ?? "";
+export const A3_PK = process.env.ATTESTOR3_KEY ?? "";
 
-const ERC20_ABI = ["function approve(address,uint256) returns (bool)"];
-const VAULT_FULL = [
+export const ERC20_ABI = [
+  "function approve(address,uint256) returns (bool)",
+  "function decimals() view returns (uint8)",
+  "function symbol() view returns (string)",
+];
+export const VAULT_FULL = [
   ...VAULT_ABI,
   "function createCampaign(uint256,address,uint96[],uint64[],address[],uint256)",
 ];
 
-async function scenario1() {
+export async function getUsdcDecimals(usdc: Contract): Promise<number> {
+  return Number(await usdc.decimals());
+}
+
+export async function scenario1() {
   console.log("\n=== Scenario 1: 3-tranche release with 2-of-3 attestor confirmation ===\n");
   const provider = new JsonRpcProvider(ARC_RPC);
   const donor = new Wallet(DONOR_PK, provider);
@@ -146,8 +206,9 @@ async function scenario1() {
 
   const vault = new Contract(VAULT, VAULT_FULL, donor);
   const usdc = new Contract(USDC, ERC20_ABI, donor);
+  const usdcDecimals = await getUsdcDecimals(usdc);
 
-  const trancheAmt = parseUnits("500", 6);
+  const trancheAmt = parseUnits("500", usdcDecimals);
   const totalAmt = trancheAmt * 3n;
   const amts = [trancheAmt, trancheAmt, trancheAmt];
   const grace = [30n * 24n * 60n * 60n, 30n * 24n * 60n * 60n, 30n * 24n * 60n * 60n];
@@ -189,7 +250,7 @@ async function scenario1() {
   console.log(`\n  contract: ${link("address", VAULT)}`);
 }
 
-async function scenario2() {
+export async function scenario2() {
   console.log("\n=== Scenario 2: expired tranche reclaimed by donor ===\n");
   const provider = new JsonRpcProvider(ARC_RPC);
   const donor = new Wallet(DONOR_PK, provider);
@@ -198,8 +259,9 @@ async function scenario2() {
 
   const vault = new Contract(VAULT, VAULT_FULL, donor);
   const usdc = new Contract(USDC, ERC20_ABI, donor);
+  const usdcDecimals = await getUsdcDecimals(usdc);
 
-  const trancheAmt = parseUnits("500", 6);
+  const trancheAmt = parseUnits("500", usdcDecimals);
   const totalAmt = trancheAmt * 2n;
   const amts = [trancheAmt, trancheAmt];
   // 60-second grace so we can demonstrate the reclaim in a few minutes
@@ -221,11 +283,13 @@ async function scenario2() {
   console.log(`  reclaim[1]  ${link("tx", tx.hash)}  block ${r!.blockNumber}`);
 }
 
-function link(kind: "tx" | "address", id: string) {
+export function link(kind: "tx" | "address", id: string) {
   return `${EXPLORER}/${kind}/${id}`;
 }
 
-async function main() {
+export const demoConfig = { ARC_RPC, EXPLORER, VAULT, USDC };
+
+export async function main() {
   const which = process.argv[2] ?? "all";
   if (which === "1" || which === "all") await scenario1();
   if (which === "2" || which === "all") await scenario2();

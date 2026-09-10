@@ -346,4 +346,65 @@ contract TrancheVaultTest is Test {
         // simpler: vaultBal <= totalFunded (tranches may be still locked at Locked)
         assertLe(vaultBal, totalFunded, "vault holds more than was funded");
     }
+
+    // -----------------------------------------------------------------------
+    // Phase-2: recipientCount storage, validation, reclaim guard, campaign id
+    // -----------------------------------------------------------------------
+
+    function test_submitProof_storesRecipientCountAndEmits() public {
+        _create3TrancheCampaign();
+        vm.prank(ngo);
+        vm.expectEmit(true, true, false, true);
+        emit TrancheVault.ProofSubmitted(CID, 0, keccak256("proof-0"), 42);
+        vault.submitProof(CID, 0, keccak256("proof-0"), 42);
+        TrancheVault.Tranche memory t = vault.getTranche(CID, 0);
+        assertEq(t.recipientCount, 42, "recipientCount not stored");
+        assertEq(t.proofHash, keccak256("proof-0"), "proofHash not stored");
+    }
+
+    function test_createCampaign_revertsOnDuplicateAttestor() public {
+        uint96[] memory amts = new uint96[](1);
+        amts[0] = 100_000_000;
+        uint64[] memory grace = new uint64[](1);
+        grace[0] = 1 days;
+        address[] memory atts = new address[](2);
+        atts[0] = a1; atts[1] = a1; // duplicate
+        vm.prank(donor);
+        vm.expectRevert(TrancheVault.DuplicateAttestor.selector);
+        vault.createCampaign(999, ngo, amts, grace, atts, 1);
+    }
+
+    function test_createCampaign_revertsOnZeroAmount() public {
+        uint96[] memory amts = new uint96[](2);
+        amts[0] = 100_000_000; amts[1] = 0; // zero tranche
+        uint64[] memory grace = new uint64[](2);
+        grace[0] = 1 days; grace[1] = 1 days;
+        address[] memory atts = new address[](1);
+        atts[0] = a1;
+        vm.prank(donor);
+        vm.expectRevert(TrancheVault.ZeroAmount.selector);
+        vault.createCampaign(998, ngo, amts, grace, atts, 1);
+    }
+
+    function test_reclaimLockedTranche_revertsNotUnlocked() public {
+        _create3TrancheCampaign();
+        // Tranche 1 never unlocked (unlockAt == 0); reclaim must revert NotUnlocked,
+        // not GraceNotElapsed.
+        vm.prank(donor);
+        vm.expectRevert(TrancheVault.NotUnlocked.selector);
+        vault.reclaimExpired(CID, 1);
+    }
+
+    function test_createCampaign_duplicateId_revertsAlreadyExists() public {
+        _create3TrancheCampaign();
+        uint96[] memory amts = new uint96[](1);
+        amts[0] = 100_000_000;
+        uint64[] memory grace = new uint64[](1);
+        grace[0] = 1 days;
+        address[] memory atts = new address[](1);
+        atts[0] = a1;
+        vm.prank(donor);
+        vm.expectRevert(TrancheVault.CampaignAlreadyExists.selector);
+        vault.createCampaign(CID, ngo, amts, grace, atts, 1);
+    }
 }

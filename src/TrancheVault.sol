@@ -51,7 +51,8 @@ contract TrancheVault {
         uint64  unlockAt;          // set when prior tranche is confirmed; 0 if not yet unlocked
         uint64  proofSubmittedAt;  // 0 if no proof yet
         TrancheState state;
-        bytes32 proofHash;
+        bytes32 proofHash;         // sha256(photoRef, gps, recipientCount) — only hash reaches chain
+        uint256 recipientCount;    // recipients served (stored on proof submission, mirrored in event)
         uint256 confirmationCount; // count of distinct attestor confirmations
     }
 
@@ -94,8 +95,11 @@ contract TrancheVault {
     // ------------------------------------------------------------------
 
     error UnknownCampaign();
+    error CampaignAlreadyExists();
     error UnknownTranche();
     error ZeroAddress();
+    error ZeroAmount();
+    error DuplicateAttestor();
     error InvalidThreshold();
     error EmptyTranches();
     error TrancheLocked();
@@ -134,12 +138,15 @@ contract TrancheVault {
         address[] calldata attestors,
         uint256 threshold
     ) external {
-        if (campaigns[campaignId].donor != address(0)) revert UnknownCampaign();
+        if (campaigns[campaignId].donor != address(0)) revert CampaignAlreadyExists();
         if (ngo == address(0)) revert ZeroAddress();
         if (trancheAmounts.length == 0) revert EmptyTranches();
         if (trancheAmounts.length != gracePeriods.length) revert UnknownTranche();
         if (attestors.length == 0 || threshold == 0 || threshold > attestors.length) {
             revert InvalidThreshold();
+        }
+        for (uint256 i = 0; i < trancheAmounts.length; i++) {
+            if (trancheAmounts[i] == 0) revert ZeroAmount();
         }
 
         Campaign storage c = campaigns[campaignId];
@@ -158,9 +165,12 @@ contract TrancheVault {
         // Tranche 0 is unlocked on funding; rest unlock as prior tranches confirm.
         c.tranches[0].unlockAt = uint64(block.timestamp);
 
-        // Register attestors
+        // Register attestors (reject zero addresses and duplicates)
         for (uint256 i = 0; i < attestors.length; i++) {
             if (attestors[i] == address(0)) revert ZeroAddress();
+            for (uint256 j = 0; j < i; j++) {
+                if (attestors[i] == attestors[j]) revert DuplicateAttestor();
+            }
             campaignAttestors[campaignId].push(attestors[i]);
         }
 
@@ -175,11 +185,13 @@ contract TrancheVault {
     // ------------------------------------------------------------------
 
     /// @notice NGO submits a proof-of-distribution for a tranche.
+    /// @param proofHash sha256(photoRef, gps, recipientCount) — only the hash reaches the chain.
+    /// @param recipientCount Number of recipients served (stored + emitted for attestor review).
     function submitProof(
         uint256 campaignId,
         uint256 trancheIndex,
         bytes32 proofHash,
-        uint256 /* recipientCount */
+        uint256 recipientCount
     ) external {
         Campaign storage c = _campaign(campaignId);
         if (trancheIndex >= c.trancheCount) revert UnknownTranche();
@@ -189,10 +201,11 @@ contract TrancheVault {
         if (t.unlockAt == 0 || block.timestamp < t.unlockAt) revert NotUnlocked();
 
         t.proofHash = proofHash;
+        t.recipientCount = recipientCount;
         t.proofSubmittedAt = uint64(block.timestamp);
         t.state = TrancheState.ProofSubmitted;
 
-        emit ProofSubmitted(campaignId, trancheIndex, proofHash, 0);
+        emit ProofSubmitted(campaignId, trancheIndex, proofHash, recipientCount);
     }
 
     // ------------------------------------------------------------------
@@ -260,7 +273,9 @@ contract TrancheVault {
         }
 
         // Grace period starts when the tranche unlocks. For tranche 0, that's funding time.
+        // Tranches that never unlocked (unlockAt == 0) are not yet reclaimable.
         uint64 graceStart = t.unlockAt;
+        if (graceStart == 0) revert NotUnlocked();
         if (block.timestamp <= graceStart + t.gracePeriod) revert GraceNotElapsed();
 
         t.state = TrancheState.Reclaimed;
